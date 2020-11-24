@@ -123,3 +123,4 @@ some_labels = housing_labels.iloc[:5]
 some_data_prepared = full_pipeline.transform(some_data)
 
 print("Predictions:", lin_reg.predict(some_data_prepared))
+print("Labels:", list(some_labels))
