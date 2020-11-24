@@ -8,6 +8,12 @@ import numpy as np
 import pandas as pd
 from six.moves import urllib
 from zlib import crc32
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import FunctionTransformer, StandardScaler, OneHotEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LinearRegression
 
 
 # Path to fetch data
@@ -32,23 +38,77 @@ def load_housing_data(housing_path=HOUSING_PATH):
     return pd.read.csv(csv_path)
 
 
-# Test set creation
-def split_train_test(data, test_ratio):
-    shuffled_indices = np.random.permutation(len(data))
-    test_set_size = int(len(data) * test_ratio)
-    test_indices = shuffled_indices[:test_set_size]
-    train_indices = shuffled_indices[test_set_size:]
-    return data.iloc[train_indices], data.iloc[test_indices]
+housing = load_housing_data()
+
+
+# Splitting data sets
+split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=87)
+for train_index, test_index in split.split(housing, housing["income_cat"]):
+    stratified_train_set = housing.loc[train_index]
+    stratified_test_set = housing.loc[test_index]
+for set_ in (stratified_train_set, stratified_test_set):
+    set_.drop("income_cat", axis=1, inplace=True)
 
 
 def test_set_check(identifier, test_ratio):
     return crc32(np.int64(identifier)) & 0xffffffff < test_ratio * 2**32
 
 
-def split_train_test_by_id(data, test_ratio, id_column):
-    ids = data[id_column]
-    in_test_set = ids.apply(lambda id_: test_set_check(id_, test_ratio()))
-    housing = load_housing_data()
-    housing_with_id = housing.reset_index()
-    train_set, test_set = split_train_test_by_id(housing_with_id, 0.2, "index")
-    return data.loc[~in_test_set], data.loc[in_test_set]
+# Clean training set
+housing = stratified_train_set.drop("median_house_value", axis=1)
+housing_labels = stratified_train_set["median_house_value"].copy()
+
+
+housing.dropna(subset=["total_bedrooms"])
+
+
+imputer = SimpleImputer(strategy="median")
+housing_num = housing.drop("ocean_proximity", axis=1)
+imputer.fit(housing_num)
+IT = imputer.transform(housing_num)
+housing_tr = pd.DataFrame(IT, columns=housing_num.columns)
+
+
+rooms_ix, bedrooms_ix, population_ix, household_ix = [
+    list(housing.columns).index(col)
+    for col in ("total_rooms", "total_bedrooms", "population", "households")]
+
+
+def add_extra_features(X, add_bedrooms_per_room=True):
+    rooms_per_household = X[:, rooms_ix] / X[:, household_ix]
+    population_per_household = X[:, population_ix] / X[:, household_ix]
+    if add_bedrooms_per_room:
+        bedrooms_per_room = X[:, bedrooms_ix] / X[:, rooms_ix]
+        return np.c_[X, rooms_per_household, population_per_household,
+                     bedrooms_per_room]
+    else:
+        return np.c_[X, rooms_per_household, population_per_household]
+
+
+attr_adder = FunctionTransformer(add_extra_features, validate=False,
+                                 kw_args={"add_bedrooms_per_room": False})
+housing_extra_attributes = attr_adder.fit_transform(housing.values)
+
+
+num_pipeline = Pipeline([
+        ('imputer', SimpleImputer(strategy="median")),
+        ('attributes_adder', FunctionTransformer(add_extra_features, validate=False)),
+        ('std_scaler', StandardScaler()),
+    ])
+
+housing_num_tr = num_pipeline.fit_transform(housing_num)
+
+
+num_attributes = list(housing_num)
+cat_attributes = ["ocean_proximity"]
+
+full_pipeline = ColumnTransformer([
+        ("num", num_pipeline, num_attributes),
+        ("cat", OneHotEncoder(), cat_attributes),
+    ])
+
+housing_prepared = full_pipeline.fit_transform(housing)
+
+
+lin_reg = LinearRegression()
+lin_reg.fit(housing_prepared, housing_labels)
