@@ -35,11 +35,15 @@ def fetch_housing_data(housing_url=HOUSING_URL, housing_path=HOUSING_PATH):
 
 def load_housing_data(housing_path=HOUSING_PATH):
     csv_path = os.path.join(housing_path, "housing.csv")
-    return pd.read.csv(csv_path)
+    return pd.read_csv(csv_path)
 
 
 housing = load_housing_data()
 
+
+housing["income_cat"] = pd.cut(housing["median_income"],
+                               bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
+                               labels=[1, 2, 3, 4, 5])
 
 # Splitting data sets
 split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=87)
@@ -112,3 +116,10 @@ housing_prepared = full_pipeline.fit_transform(housing)
 
 lin_reg = LinearRegression()
 lin_reg.fit(housing_prepared, housing_labels)
+
+
+some_data = housing.iloc[:5]
+some_labels = housing_labels.iloc[:5]
+some_data_prepared = full_pipeline.transform(some_data)
+
+print("Predictions:", lin_reg.predict(some_data_prepared))
