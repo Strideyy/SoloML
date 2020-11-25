@@ -14,6 +14,7 @@ from sklearn.preprocessing import FunctionTransformer, StandardScaler, OneHotEnc
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 
 
 # Path to fetch data
@@ -46,7 +47,7 @@ housing["income_cat"] = pd.cut(housing["median_income"],
                                labels=[1, 2, 3, 4, 5])
 
 # Splitting data sets
-split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=87)
+split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
 for train_index, test_index in split.split(housing, housing["income_cat"]):
     stratified_train_set = housing.loc[train_index]
     stratified_test_set = housing.loc[test_index]
@@ -114,13 +115,18 @@ full_pipeline = ColumnTransformer([
 housing_prepared = full_pipeline.fit_transform(housing)
 
 
-lin_reg = LinearRegression()
-lin_reg.fit(housing_prepared, housing_labels)
+#lin_reg = LinearRegression()
+#lin_reg.fit(housing_prepared, housing_labels)
+
+
+forest_reg = RandomForestRegressor()
+forest_reg.fit(housing_prepared, housing_labels)
 
 
 some_data = housing.iloc[:5]
 some_labels = housing_labels.iloc[:5]
 some_data_prepared = full_pipeline.transform(some_data)
 
-print("Predictions:", lin_reg.predict(some_data_prepared))
+
+print("Predictions:", forest_reg.predict(some_data_prepared))
 print("Labels:", list(some_labels))
