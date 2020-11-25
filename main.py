@@ -46,30 +46,29 @@ housing["income_cat"] = pd.cut(housing["median_income"],
                                bins=[0., 1.5, 3.0, 4.5, 6., np.inf],
                                labels=[1, 2, 3, 4, 5])
 
-# Splitting data sets
+# Stratified Sampling based on income
 split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
 for train_index, test_index in split.split(housing, housing["income_cat"]):
     stratified_train_set = housing.loc[train_index]
     stratified_test_set = housing.loc[test_index]
-for set_ in (stratified_train_set, stratified_test_set):
+for set_ in (stratified_train_set, stratified_test_set):  # Remove income_cat so data is in original state
     set_.drop("income_cat", axis=1, inplace=True)
 
 
-def test_set_check(identifier, test_ratio):
+def test_set_check(identifier, test_ratio):  # This code is obsolete? Probably!
     return crc32(np.int64(identifier)) & 0xffffffff < test_ratio * 2**32
 
 
-# Clean training set
+# Reverting to a clean training set, separate predictors and labels
 housing = stratified_train_set.drop("median_house_value", axis=1)
 housing_labels = stratified_train_set["median_house_value"].copy()
 
 
+# Remove missing values
 housing.dropna(subset=["total_bedrooms"])
-
-
 imputer = SimpleImputer(strategy="median")
-housing_num = housing.drop("ocean_proximity", axis=1)
-imputer.fit(housing_num)
+housing_num = housing.drop("ocean_proximity", axis=1)  # We need to remove ocean_proximity because the median can only
+imputer.fit(housing_num)                               # be computed on numerical attributes
 IT = imputer.transform(housing_num)
 housing_tr = pd.DataFrame(IT, columns=housing_num.columns)
 
@@ -79,6 +78,7 @@ rooms_ix, bedrooms_ix, population_ix, household_ix = [
     for col in ("total_rooms", "total_bedrooms", "population", "households")]
 
 
+# Transformer class to add combined attributes
 def add_extra_features(X, add_bedrooms_per_room=True):
     rooms_per_household = X[:, rooms_ix] / X[:, household_ix]
     population_per_household = X[:, population_ix] / X[:, household_ix]
@@ -90,11 +90,10 @@ def add_extra_features(X, add_bedrooms_per_room=True):
         return np.c_[X, rooms_per_household, population_per_household]
 
 
-attr_adder = FunctionTransformer(add_extra_features, validate=False,
-                                 kw_args={"add_bedrooms_per_room": False})
+attr_adder = FunctionTransformer(add_extra_features, validate=False, kw_args={"add_bedrooms_per_room": False})
 housing_extra_attributes = attr_adder.fit_transform(housing.values)
 
-
+# Transformation pipeline, transforms all data in sequence
 num_pipeline = Pipeline([
         ('imputer', SimpleImputer(strategy="median")),
         ('attributes_adder', FunctionTransformer(add_extra_features, validate=False)),
@@ -103,7 +102,7 @@ num_pipeline = Pipeline([
 
 housing_num_tr = num_pipeline.fit_transform(housing_num)
 
-
+# Apply all the transformations to the housing data
 num_attributes = list(housing_num)
 cat_attributes = ["ocean_proximity"]
 
@@ -115,6 +114,7 @@ full_pipeline = ColumnTransformer([
 housing_prepared = full_pipeline.fit_transform(housing)
 
 
+# Selecting and training a model
 #lin_reg = LinearRegression()
 #lin_reg.fit(housing_prepared, housing_labels)
 
